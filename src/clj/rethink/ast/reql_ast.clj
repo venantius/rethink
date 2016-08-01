@@ -15,6 +15,7 @@
   {:DB com.rethinkdb.gen.ast.Db
    :DB_CREATE com.rethinkdb.gen.ast.DbCreate
    :DB_DROP com.rethinkdb.gen.ast.DbDrop
+   :DB_LIST com.rethinkdb.gen.ast.DbList
    :TABLE_CREATE com.rethinkdb.gen.ast.TableCreate
    :TABLE_LIST com.rethinkdb.gen.ast.TableList})
 
@@ -66,6 +67,11 @@
   deleted."
   [dbname]
   (reql-ast :DB_DROP [dbname] nil))
+
+(defn db-list
+  "List all database names in the cluster. The result is a list of strings."
+  []
+  (reql-ast :DB_LIST [] nil))
 
 (defn table-create
   ([table-name]
