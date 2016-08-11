@@ -5,15 +5,24 @@
            [com.rethinkdb.model.MapObject]
            [com.rethinkdb.net.Connection]))
 
+(def r (. RethinkDB r))
+
+;; TODO: Should this be a record?
 (defn connect
-  [{:keys [hostname port dbname username password timeout cert-file ssl-context] :as opts}]
+  [{:keys [hostname port db username password timeout cert-file ssl-context]
+    :or {hostname "localhost"
+         port 28015
+         username "admin"
+         password ""
+         timeout 20}
+    :as opts}]
   (let [connection (.connection r)]
     (when hostname
       (.hostname connection hostname))
     (when port
       (.port connection port))
-    (when dbname
-      (.dbname connection dbname))
+    (when db
+      (.db connection db))
     (when username
       (.user connection username password))
     (when timeout
