@@ -39,12 +39,21 @@
 
     :else x))
 
+(defn reql-ast?
+  [x]
+  (and
+   (map? x)
+   (contains? x :term-type)
+   (contains? x :args)
+   (contains? x :optargs)))
+
 (def lookup-table
   {:DB com.rethinkdb.gen.ast.Db
    :DB_CREATE com.rethinkdb.gen.ast.DbCreate
    :DB_DROP com.rethinkdb.gen.ast.DbDrop
    :DB_LIST com.rethinkdb.gen.ast.DbList
    :FILTER com.rethinkdb.gen.ast.Filter
+   :GET_FIELD com.rethinkdb.gen.ast.GetField
    :INSERT com.rethinkdb.gen.ast.Insert
    :TABLE com.rethinkdb.gen.ast.Table
    :TABLE_CREATE com.rethinkdb.gen.ast.TableCreate
@@ -54,13 +63,19 @@
 (defn coerce-to-arguments
   [args]
   (cond (empty? args) (com.rethinkdb.model.Arguments.)
+        (coll? args) (com.rethinkdb.model.Arguments. (transform-request args))
         :else (com.rethinkdb.model.Arguments. args)))
+
+(defn coerce-to-optargs
+  [m]
+  (let [f (fn [hm [k v]] (.with hm (name k) (transform-request v)))]
+    (reduce f (com.rethinkdb.model.OptArgs.) m)))
 
 (defn create-class
   "Create a general class using class dispatch on the lookup table. For instance,
   see example b below."
   [term-type args optargs]
-  (let [klass (term-type lookup-table)]
+  (let [klass (get lookup-table term-type)]
     (when-not klass
       (throw (ex-info "Class not found in lookup-table" {})))
     (let [args (coerce-to-arguments args)]
@@ -70,17 +85,15 @@
 
 (defn maybe-cast-to-reql-ast
   [{:keys [term-type args optargs] :as arg}]
-  (if (map? arg)
-    (create-class term-type args optargs)
-    arg))
+  (if (reql-ast? arg)
+    (create-class term-type args (coerce-to-optargs optargs))
+    (transform-request arg)))
 
 (defn recursively-create-class
   [{:keys [term-type args optargs] :as reql-ast}]
-  (if args
-    (create-class term-type (map maybe-cast-to-reql-ast args) optargs)
-    (create-class term-type args optargs)))
+  (create-class term-type (map maybe-cast-to-reql-ast args) (coerce-to-optargs optargs)))
 
 (defn run
-  [{:keys [term-type args optargs] :as reql-ast} conn]
+  [reql-ast conn]
   (let [q (recursively-create-class reql-ast)]
     (transform-response (.run q conn))))

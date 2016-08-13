@@ -6,16 +6,21 @@
 
 (defonce conn (java/connect {}))
 
+(defn run
+  [reql-ast conn]
+  (engine/run reql-ast conn))
+
+;; utility
+
+(defn- first-term-type
+  [& x] (:term-type (first x)))
+
 (defn reql-ast
   "Generate a Reql Ast map"
   [term-type args optargs]
   {:term-type term-type
    :args args
    :optargs optargs})
-
-(defn run
-  [reql-ast conn]
-  (engine/run reql-ast conn))
 
 ;; Manipulating databases
 
@@ -37,11 +42,6 @@
   (reql-ast :DB_LIST [] nil))
 
 ;; Manipulating tables
-
-;; utility
-
-(defn- first-term-type
-  [& x] (:term-type (first x)))
 
 (defmulti table-create
   first-term-type)
@@ -92,7 +92,7 @@
   "Insert documents into a table. Accepts a single document or an array of
   documents."
   [table data]
-  (reql-ast :INSERT [table (engine/transform-request data)] nil))
+  (reql-ast :INSERT [table data] nil))
 
 ;; TODO
 (defn update
@@ -104,20 +104,38 @@
   [args]
   (reql-ast :DB [args] nil))
 
-(defn table
-  [args]
-  (reql-ast :TABLE [args] nil))
+;; TODO: allow to pass query (i.e. reql-ast :DB)
+(defmulti table
+  {:arglists '([tablename] [db tablename])}
+  first-term-type)
+
+(defmethod table :DB
+  [db tablename]
+  (reql-ast :TABLE [tablename] nil))
+
+(defmethod table :default
+  [tablename]
+  (reql-ast :TABLE [tablename] nil))
 
 (defn filter
   [query pred-fn]
-  (reql-ast :FILTER [query (engine/transform-request pred-fn)] nil))
+  (reql-ast :FILTER [query pred-fn] nil))
+
+;; Document manipulation
+
+(defn get-field
+  [query field]
+  (reql-ast :GET_FIELD [query field] nil))
+
+;; Math and logic
+
+(defn eq
+  [value1 value2 & values])
 
 ;; Control structures
 
-(defn expr
-  [values]
-  (reql-ast))
 
+;; Special
 (defn func
   [args terms]
   (reql-ast :FUNC [args] nil))
