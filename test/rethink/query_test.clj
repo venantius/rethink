@@ -93,5 +93,177 @@
     (let [res (-> (query/table "advertisements")
                   (query/get-field "title")
                   (query/run conn))]
-      (is (= res
-             (map :title advertisements))))))
+      (is (= (set res)
+             (set (map :title advertisements)))))))
+
+;; Math and logic
+
+(deftest add-works
+  (let [res (-> 2
+                (query/add 3)
+                (query/run conn))]
+    (is (= res 5))))
+
+(deftest sub-works
+  (let [res (-> 5
+                (query/sub 3)
+                (query/run conn))]
+    (is (= res 2))))
+
+(deftest mul-works
+  (testing "with numbers"
+    (let [res (-> 5
+                  (query/mul 3)
+                  (query/run conn))]
+      (is (= res 15))))
+  (testing "with arrays"
+    (let [data ["this" "is" "repeated"]
+          res (-> (apply query/make-array data)
+                  (query/mul 3)
+                  (query/run conn))]
+      (is (= res (into [] (flatten (repeat 3 data))))))))
+
+(deftest div-works
+  (let [res (-> 10
+                (query/div 2)
+                (query/run conn))]
+    (is (= res 5))))
+
+(deftest mod-works
+  (let [res (-> 10
+                (query/mod 3)
+                (query/run conn))]
+    (is (= res 1))))
+
+(deftest and-works
+  (let [res (-> true
+                (query/and false)
+                (query/run conn))]
+    (is (= res false)))
+  (let [res (-> true
+                (query/and true)
+                (query/run conn))]
+    (is (= res true))))
+
+(deftest or-works
+  (let [res (-> true
+                (query/or false)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> false
+                (query/or false)
+                (query/run conn))]
+    (is (= res false))))
+
+(deftest ne-works
+  (let [res (-> 1
+                (query/ne 1 1)
+                (query/run conn))]
+    (is (= res false)))
+  (let [res (-> 2
+                (query/ne 1)
+                (query/run conn))]
+    (is (= res true))))
+
+(deftest gt-works
+  (let [res (-> 1
+                (query/gt 2)
+                (query/run conn))]
+    (is (= res false)))
+  (let [res (-> 2
+                (query/gt 1)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> (query/gt 3 2 1)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> (query/gt 2 1 3)
+                (query/run conn))]
+    (is (= res false))))
+
+(deftest ge-works
+  (let [res (-> (query/ge 1 2)
+                (query/run conn))]
+    (is (= res false)))
+  (let [res (-> (query/ge 1 1)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> (query/ge 3 2 1)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> (query/ge 2 1 3)
+                (query/run conn))]
+    (is (= res false))))
+
+(deftest lt-works
+  (let [res (-> (query/lt 1 2)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> (query/lt 2 1)
+                (query/run conn))]
+    (is (= res false)))
+  (let [res (-> (query/lt 1 2 3)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> (query/lt 2 1 3)
+                (query/run conn))]
+    (is (= res false))))
+
+(deftest le-works
+  (let [res (-> (query/le 1 2)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> (query/le 1 1)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> (query/le 1 2 3)
+                (query/run conn))]
+    (is (= res true)))
+  (let [res (-> (query/le 2 1 3)
+                (query/run conn))]
+    (is (= res false))))
+
+(deftest not-works
+  (let [res (-> (query/not true)
+                (query/run conn))]
+    (is (= res false))))
+
+(deftest random-works
+  (let [res (-> (query/random 5 10)
+                (query/run conn))]
+    (is (< res 10))
+    (is (> res 5))
+    (is (= (type res) java.lang.Long)))
+  (let [res (-> (query/random 2 4 {:float true})
+                (query/run conn))]
+    (is (< res 4))
+    (is (> res 2))
+    (is (= (type res) java.lang.Double)))
+  (let [res (-> (query/random)
+                (query/run conn))]
+    (is (< res 1))
+    (is (> res 0))))
+
+(deftest round-works
+  (let [res (-> (query/round 1.1)
+                (query/run conn))]
+    (is (= res 1)))
+  (let [res (-> (query/round 1.9)
+                (query/run conn))]
+    (is (= res 2))))
+
+(deftest ceil-works
+  (let [res (-> (query/ceil 1.1)
+                (query/run conn))]
+    (is (= res 2)))
+  (let [res (-> (query/ceil 1.9)
+                (query/run conn))]
+    (is (= res 2))))
+
+(deftest floor-works
+  (let [res (-> (query/floor 1.1)
+                (query/run conn))]
+    (is (= res 1)))
+  (let [res (-> (query/floor 1.9)
+                (query/run conn))]
+    (is (= res 1))))

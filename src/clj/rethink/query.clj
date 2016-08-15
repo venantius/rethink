@@ -1,5 +1,5 @@
 (ns rethink.query
-  (:refer-clojure :exclude [filter fn update])
+  (:refer-clojure :exclude [and filter fn make-array mod not or update var])
   (:require [clojure.walk :as walk]
             [rethink.engine :as engine]
             [rethink.java :as java]))
@@ -127,30 +127,151 @@
   [query field]
   (reql-ast :GET_FIELD [query field] nil))
 
+;; common alias
+(def g get-field)
+
 ;; Math and logic
 
+
+(defn add
+  "Sum two or more numbers, or concatenate two or more strings or arrays.
+
+  The add command can be called in either prefix or infix form; both forms are
+  equivalent. Note that ReQL will not perform type coercion. You cannot, for
+  example, add a string and a number together."
+  [value1 value2 & values]
+  (reql-ast :ADD (into [] (concat [value1 value2] values)) nil))
+
+(defn sub
+  "Subtract two numbers."
+  [value & values]
+  (reql-ast :SUB (into [] (concat [value] values)) nil))
+
+(defn mul
+  "Multiply two numbers, or make a periodic array."
+  [value & values]
+  (reql-ast :MUL (into [] (concat [value] values)) nil))
+
+(defn div
+  "Divide two numbers."
+  [value & values]
+  (reql-ast :DIV (into [] (concat [value] values)) nil))
+
+(defn mod
+  "Find the remainder when dividing two numbers."
+  [value1 value2]
+  (reql-ast :MOD [value1 value2] nil))
+
+(defn and
+  "Compute the logical “and” of one or more values.
+
+  Calling and with zero arguments will return true."
+  [& values]
+  (reql-ast :AND (into [] values) nil))
+
+(defn or
+  "Compute the logical “or” of one or more values.
+
+  Calling or with zero arguments will return false."
+  [& values]
+  (reql-ast :OR (into [] values) nil))
+
 (defn eq
-  [value1 value2 & values])
+  "Test if two or more values are equal."
+  [value1 value2 & values]
+  (reql-ast :EQ (into [] (concat [value1 value2] values)) nil))
+
+(defn ne
+  "Test if two or more values are not equal."
+  [value & values]
+  (reql-ast :NE (into [] (concat [value] values)) nil))
+
+(defn gt
+  "Compare values, testing if the left-hand value is greater than the right-hand."
+  [value & values]
+  (reql-ast :GT (into [] (concat [value] values)) nil))
+
+(defn ge
+  "Compare values, testing if the left-hand value is greater than or equal to
+  the right-hand."
+  [value & values]
+  (reql-ast :GE (into [] (concat [value] values)) nil))
+
+(defn lt
+  "Compare values, testing if the left-hand value is less than the right-hand."
+  [value & values]
+  (reql-ast :LT (into [] (concat [value] values)) nil))
+
+(defn le
+  "Compare values, testing if the left-hand value is less than or equal to the
+  right-hand."
+  [value & values]
+  (reql-ast :LE (into [] (concat [value] values)) nil))
+
+(defn not
+  "Compute the logical inverse (not) of an expression.
+
+  All values that are not false or null will be converted to true."
+  [value]
+  (reql-ast :NOT [value] nil))
+
+(defn random
+  "Generate a random number between given (or implied) bounds. random takes
+  zero, one or two arguments, and can also take an optarg of float."
+  [& args]
+  (if (map? (last args))
+    (reql-ast :RANDOM (into [] (drop-last args)) (last args))
+    (reql-ast :RANDOM (into [] args) nil)))
+
+(defn round
+  "Rounds the given value to the nearest whole integer.
+
+  For example, values of 1.0 up to but not including 1.5 will return 1.0,
+  similar to floor; values of 1.5 up to 2.0 will return 2.0, similar to ceil."
+  [value]
+  (reql-ast :ROUND [value] nil))
+
+(defn ceil
+  "Rounds the given value up, returning the smallest integer greater than or
+  equal to the given value (the value’s ceiling)."
+  [value]
+  (reql-ast :CEIL [value] nil))
+
+(defn floor
+  "Rounds the given value down, returning the largest integer value less than
+  or equal to the given value (the value’s floor)."
+  [value]
+  (reql-ast :FLOOR [value] nil))
 
 ;; Control structures
 
-
 ;; Special
+
+(defn datum
+  [arg]
+  (reql-ast :DATUM [arg] nil))
+
+(defn make-array
+  [& args]
+  (reql-ast :MAKE_ARRAY (into [] (flatten args)) nil))
+
 (defn func
+  "args are the actual arguments to the function"
   [args terms]
-  (reql-ast :FUNC [args] nil))
+  (reql-ast :FUNC [args terms] nil))
+
+(defn funcall
+  [f & args]
+  (reql-ast :FUNCALL (into [] (concat [f] args)) nil))
+
+(defn var
+  [args]
+  (reql-ast :VAR [args] nil))
 
 (defmacro fn [args & [body]]
-  (let [new-args (into [] (clojure.core/map
-                           #(hash-map :temp-var (keyword %)) args))
-        new-replacements (zipmap args new-args)
+  (let [new-args (map #(. Integer valueOf %)
+                      (take (count args)
+                            (repeatedly (comp str (partial gensym "")))))
+        new-replacements (zipmap args (map var new-args))
         new-terms (walk/postwalk-replace new-replacements body)]
-    (func new-args new-terms)))
-
-#_(def sample-db (create-class :DB (com.rethinkdb.model.Arguments. "test")))
-#_(def db-ast (map->ReqlAst {:term-type :DB
-                             :args "test"
-                             :optargs nil}))
-#_(def b (create-class :TABLE_CREATE (com.rethinkdb.model.Arguments. "test")))
-
-(.value com.rethinkdb.gen.proto.TermType/TABLE_CREATE)
+    (func (make-array new-args) new-terms)))

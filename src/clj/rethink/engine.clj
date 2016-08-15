@@ -1,4 +1,5 @@
-(ns rethink.engine)
+(ns rethink.engine
+  (:require [rethink.meta :as m]))
 
 (defn transform-response
   "Given the response of a RethinkDB query, transform it into the appropriate
@@ -47,18 +48,57 @@
    (contains? x :args)
    (contains? x :optargs)))
 
+(defn term-to-classname
+  "Given a term, e.g. :DB_CREATE, return the corresponding Java driver class
+  name as a symbol, e.g. com.rethinkdb.gen.ast.DbCreate"
+  [term]
+  (symbol (str "com.rethinkdb.gen.ast."
+               (clojure.string/join
+                (map clojure.string/capitalize
+                     (-> term name (clojure.string/split #"_")))))))
+
+(defn- term-to-class
+  "Given a term, e.g. DB_CREATE, resolve to the corresponding Java driver class,
+  e.g. com.rethinkdb.gen.ast.DbCreate"
+  [term]
+  (try
+    (resolve
+     (term-to-classname term))
+    (catch Exception e
+      nil)))
+
+(defn generate-lookup-table
+  []
+  (let [term-types (keys m/term-info)]
+    (zipmap term-types
+            (map term-to-class term-types))))
+
 (def lookup-table
-  {:DB com.rethinkdb.gen.ast.Db
-   :DB_CREATE com.rethinkdb.gen.ast.DbCreate
-   :DB_DROP com.rethinkdb.gen.ast.DbDrop
-   :DB_LIST com.rethinkdb.gen.ast.DbList
-   :FILTER com.rethinkdb.gen.ast.Filter
-   :GET_FIELD com.rethinkdb.gen.ast.GetField
-   :INSERT com.rethinkdb.gen.ast.Insert
-   :TABLE com.rethinkdb.gen.ast.Table
-   :TABLE_CREATE com.rethinkdb.gen.ast.TableCreate
-   :TABLE_DROP com.rethinkdb.gen.ast.TableDrop
-   :TABLE_LIST com.rethinkdb.gen.ast.TableList})
+  (generate-lookup-table))
+
+#_(def lookup-table
+    {:ADD com.rethinkdb.gen.ast.Add
+     :DATUM com.rethinkdb.gen.ast.Datum
+     :DB com.rethinkdb.gen.ast.Db
+     :DB_CREATE com.rethinkdb.gen.ast.DbCreate
+     :DB_DROP com.rethinkdb.gen.ast.DbDrop
+     :DB_LIST com.rethinkdb.gen.ast.DbList
+     :DIV com.rethinkdb.gen.ast.Div
+     :EQ com.rethinkdb.gen.ast.Eq
+     :FILTER com.rethinkdb.gen.ast.Filter
+     :FUNC com.rethinkdb.gen.ast.CljFunc ;; Custom class
+     :FUNCALL com.rethinkdb.gen.ast.Funcall
+     :GET_FIELD com.rethinkdb.gen.ast.GetField
+     :MAKE_ARRAY com.rethinkdb.gen.ast.MakeArray
+     :MOD com.rethinkdb.gen.ast.Mod
+     :MUL com.rethinkdb.gen.ast.Mul
+     :INSERT com.rethinkdb.gen.ast.Insert
+     :SUB com.rethinkdb.gen.ast.Sub
+     :TABLE com.rethinkdb.gen.ast.Table
+     :TABLE_CREATE com.rethinkdb.gen.ast.TableCreate
+     :TABLE_DROP com.rethinkdb.gen.ast.TableDrop
+     :TABLE_LIST com.rethinkdb.gen.ast.TableList
+     :VAR com.rethinkdb.gen.ast.Var})
 
 (defn coerce-to-arguments
   [args]
@@ -77,23 +117,27 @@
   [term-type args optargs]
   (let [klass (get lookup-table term-type)]
     (when-not klass
-      (throw (ex-info "Class not found in lookup-table" {})))
-    (let [args (coerce-to-arguments args)]
-      (clojure.lang.Reflector/invokeConstructor
-       klass
-       (into-array java.lang.Object [args optargs])))))
+      (throw (ex-info (format "Class not found in lookup-table: %s" term-type)
+                      {:missing-class term-type})))
+    (cond
+      (= klass com.rethinkdb.gen.ast.Datum)
+      (com.rethinkdb.gen.ast.Datum. (coerce-to-arguments args))
+      (= klass com.rethinkdb.gen.ast.CljFunc)
+      (com.rethinkdb.gen.ast.CljFunc. (coerce-to-arguments args))
+
+      :else
+      (let [args (coerce-to-arguments args)]
+        (clojure.lang.Reflector/invokeConstructor
+         klass
+         (object-array [args optargs]))))))
 
 (defn maybe-cast-to-reql-ast
   [{:keys [term-type args optargs] :as arg}]
   (if (reql-ast? arg)
-    (create-class term-type args (coerce-to-optargs optargs))
+    (create-class term-type (map maybe-cast-to-reql-ast args) (coerce-to-optargs optargs))
     (transform-request arg)))
-
-(defn recursively-create-class
-  [{:keys [term-type args optargs] :as reql-ast}]
-  (create-class term-type (map maybe-cast-to-reql-ast args) (coerce-to-optargs optargs)))
 
 (defn run
   [reql-ast conn]
-  (let [q (recursively-create-class reql-ast)]
+  (let [q (maybe-cast-to-reql-ast reql-ast)]
     (transform-response (.run q conn))))
