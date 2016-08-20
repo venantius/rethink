@@ -74,7 +74,9 @@
             (map term-to-class term-types))))
 
 (def lookup-table
-  (generate-lookup-table))
+  (assoc
+   (generate-lookup-table)
+   :FUNC com.rethinkdb.gen.ast.CljFunc))
 
 #_(def lookup-table
     {:ADD com.rethinkdb.gen.ast.Add
